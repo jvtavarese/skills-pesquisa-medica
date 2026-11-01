@@ -1,0 +1,13 @@
+# sistema
+.DS_Store
+__pycache__/
+*.pyc
+.env
+.env.*
+
+# saídas de uso das skills (cada levantamento é do pesquisador, não do repositório)
+levantamento-*/
+*-workspace/
+
+# artefatos de build (publicados como asset de release)
+*.skill
