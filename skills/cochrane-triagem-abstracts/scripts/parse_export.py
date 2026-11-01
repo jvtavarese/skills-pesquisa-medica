@@ -8,12 +8,14 @@ Saídas:
 Exemplo:
   parse_export.py --dir levantamento-x --search-id S-0003 --family Q3 \
       --section central_trial export_trials.txt
+Cada registro e item da busca leva `pmid` quando a exportação traz o PMID do mesmo registro
+(campo PM, ou AN/URL com "PUBMED <n>"); fetch_pubmed.py usa isso para completar abstracts ausentes.
 Se o formato não for reconhecido, o script avisa; leia o arquivo e monte o JSON manualmente,
 sem inventar campos ausentes.
 """
 import argparse, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import NO_ABSTRACT, dump_json, now, record_url
+from common import NO_ABSTRACT, dump_json, extract_pmid, now, record_url, valid_id
 
 PLAIN_MULTI = {'AU', 'KY', 'PT', 'XR'}
 
@@ -40,7 +42,8 @@ def parse_plain(text):
         out.append(dict(id=rid, title=g('TI'), authors=f.get('AU', []), journal=g('SO'),
                         year=int(g('YR')) if (g('YR') or '').isdigit() else None, volume=g('VL'), issue=g('NO'),
                         pages=g('PG'), doi=(g('DOI') or '').replace('https://doi.org/', '') or None,
-                        accession=g('PM') or g('EM') or g('AN'), publication_type='; '.join(f.get('PT', [])) or None,
+                        accession=g('PM') or g('EM') or g('AN'),
+                        pmid=extract_pmid({k: f.get(k) for k in ('PM', 'AN', 'US')}), publication_type='; '.join(f.get('PT', [])) or None,
                         language=g('LA'), sourced_from=', '.join(f.get('XR', [])) or None,
                         abstract=None if not ab or NO_ABSTRACT in ab else ab, url=g('US') or (record_url(rid) if rid else None)))
     return out
@@ -70,6 +73,7 @@ def parse_ris(text):
         out.append(dict(id=rid or '', title=g('TI', 'T1'), authors=f.get('AU', []) + f.get('A1', []), journal=g('JO', 'T2', 'JF'),
                         year=int(yr[:4]) if yr and yr[:4].isdigit() else None, volume=g('VL'), issue=g('IS'),
                         pages=f'{sp}-{ep}' if sp and ep else sp, doi=g('DO'), accession=g('AN'),
+                        pmid=extract_pmid({'AN': f.get('AN'), 'UR': f.get('UR'), 'L2': f.get('L2')}),
                         publication_type=g('M3', 'TY'), language=g('LA'), sourced_from=g('DB'),
                         abstract=None if not ab or NO_ABSTRACT in ab else ab, url=url or (record_url(rid) if rid else None)))
     return out
@@ -92,20 +96,22 @@ if __name__ == '__main__':
         recs += r
     items = []
     for r in recs:
-        if not r['id']:
-            print('AVISO: registro sem ID:', (r['title'] or '')[:60]); continue
+        if not valid_id(r['id']):
+            print('AVISO: registro sem ID Cochrane válido, ignorado:', repr(r['id'])[:40], (r['title'] or '')[:60]); continue
         cit = ', '.join(str(x) for x in [r['journal'], r['year']] if x)
         if r['volume']:
             cit += f", {r['volume']}" + (f"({r['issue']})" if r['issue'] else '')
         if r['pages']:
             cit += f", {r['pages']}"
-        r.update(citation=cit, section=a.section, captured_at=now(), origin='exportacao_cochrane')
+        r.update(citation=cit, section=a.section, captured_at=now(), origin='exportacao_cochrane',
+                 abstract_source='cochrane' if r['abstract'] else None)
         dump_json(r, os.path.join(a.dir, 'artigos', '_registros', r['id'] + '.json'))
         items.append(dict(id=r['id'], title=r['title'], href=r['url'], meta=cit, src=r['sourced_from'] or '',
-                          section=a.section, has_abstract=bool(r['abstract'])))
+                          section=a.section, has_abstract=bool(r['abstract']), pmid=r.get('pmid')))
     path = os.path.join(a.dir, 'buscas', a.search_id + '.json')
     prev = __import__('json').load(open(path)) if os.path.exists(path) else dict(search_id=a.search_id, family=a.family, items=[])
     seen = {i['id'] for i in prev['items']}
     prev['items'] += [i for i in items if i['id'] not in seen]
     dump_json(prev, path)
-    print(f'{len(items)} registros ({sum(i["has_abstract"] for i in items)} com abstract) -> {path}')
+    print(f'{len(items)} registros ({sum(i["has_abstract"] for i in items)} com abstract, '
+          f'{sum(bool(i["pmid"]) for i in items)} com PMID) -> {path}')

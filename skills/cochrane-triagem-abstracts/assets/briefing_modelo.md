@@ -15,6 +15,7 @@ OBJETIVOS ESPECÍFICOS:
 
 META: <número de artigos, ou "todos os válidos">          (opcional)
 ANOS: <ex.: 2021–2026, ou "sem filtro">                   (opcional)
+FONTE DO ABSTRACT: <"cochrane" ou "cochrane+pubmed">       (opcional; padrão: cochrane)
 BUSCAS JÁ FEITAS: <strings booleanas, se tiver>          (opcional)
 ```
 
@@ -33,6 +34,7 @@ Exemplo de pedido completo:
   "eixos": {"a": "complexidade/MRCI em DRC", "b": "farmacoterapia/polifarmácia em DRC",
             "c": "sobrecarga do cuidador em DRC", "d": "farmacoterapia × cuidador", "e": "metodológico MRCI/ZBI"},
   "meta": "todos",
+  "fonte_abstract": "cochrane",
   "filtro_anos": null,
   "buscas_nomes": {"S-0001": "Busca 1 — relação central", "S-0002": "Busca 2 — ..."},
   "observacoes": ["Texto livre para a seção OBSERVAÇÕES do relatório."]

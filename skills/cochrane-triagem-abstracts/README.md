@@ -49,6 +49,17 @@ Pode ser colado na conversa, em arquivo ou como link do Google Docs.
   e exporte o resultado: **Select all → Export selected citation(s) → Plain text → Include abstract →
   Download**. Depois é só mandar os arquivos dizendo a qual busca cada um pertence.
 
+### APIs (opcionais)
+A Cochrane não tem API pública de busca, então a **descoberta** dos artigos é sempre feita nela, pelo
+navegador ou pela exportação manual. Duas APIs gratuitas ajudam depois disso:
+- **PubMed:** se você pedir `FONTE DO ABSTRACT: cochrane+pubmed`, os registros do CENTRAL que vieram do
+  PubMed podem ter o abstract buscado pelo PMID, sem navegador. O pacote informa a fonte, e o texto só é
+  aceito se o título bater com o da Cochrane.
+- **Crossref:** confere e completa DOI, volume e páginas das referências. Nunca sobrescreve o que a
+  Cochrane informou; as divergências aparecem no relatório.
+
+Variáveis de ambiente opcionais: `NCBI_API_KEY` e `CROSSREF_MAILTO`.
+
 ## O que você recebe
 
 ```

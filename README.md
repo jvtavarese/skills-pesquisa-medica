@@ -16,7 +16,7 @@ Este repositório é da comunidade. Use, adapte, corrija e crie as suas.
 
 | Skill | O que faz | Status |
 |---|---|---|
-| [`cochrane-triagem-abstracts`](skills/cochrane-triagem-abstracts/) | Busca na Cochrane Library a partir do briefing do seu projeto. Cada abstract passa por dois leitores independentes e um juiz. Entrega um relatório em PDF e Google Docs no formato "busca → quantos vieram → quantos usei → referências". | estável, testada em caso real |
+| [`cochrane-triagem-abstracts`](skills/cochrane-triagem-abstracts/) | Busca na Cochrane Library a partir do briefing do seu projeto. Cada abstract passa por dois leitores independentes e um juiz. Entrega um relatório em PDF e Google Docs no formato "busca → quantos vieram → quantos usei → referências". | v1.1.0 · estável, testada em caso real · usa PubMed e Crossref de forma opcional |
 
 Tem uma ideia de skill? [Abra uma sugestão](../../issues/new?template=nova-skill.md).
 

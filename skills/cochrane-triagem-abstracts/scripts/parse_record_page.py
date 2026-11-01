@@ -5,13 +5,17 @@ Entrada: arquivos .txt com o innerText completo da página
   (ex.: https://www.cochranelibrary.com/central/doi/10.1002/central/CN-02761934/full),
   nomeados <ID>.txt (ex.: CN-02761934.txt).
 Saída: <dir>/artigos/_registros/<ID>.json
+  Inclui `pmid` quando o Accession Number da Cochrane traz "PUBMED <n>" (usado por fetch_pubmed.py)
+  e `abstract_source` = "cochrane" quando a página exibe abstract.
+  Atenção: rodar de novo sobrescreve o registro (inclusive um abstract completado pelo PubMed;
+  basta rodar fetch_pubmed.py outra vez).
 
 Exemplo:
   parse_record_page.py --dir levantamento-x artigos/_paginas/*.txt
 """
 import argparse, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import NO_ABSTRACT, dump_json, now, record_url, split_citation
+from common import NO_ABSTRACT, dump_json, extract_pmid, now, record_url, split_citation, valid_id
 
 
 def parse(text):
@@ -47,12 +51,14 @@ def parse(text):
                 j += 1
     src = re.search(r'Sourced from:\n\s*([^\n]+)', body)
     c = split_citation(cit.split(' | added')[0])
+    acc = info.get('Accession Number')
+    pmid = extract_pmid(acc) or extract_pmid(re.findall(r'(?:pubmed\.ncbi\.nlm\.nih\.gov|ncbi\.nlm\.nih\.gov/pubmed)/\d+', text))
     return dict(title=title, authors=[a.strip() for a in authors.split(',') if a.strip()],
                 citation=cit.split(' | added')[0], **c,
                 doi=(info.get('DOI of original publication') or '').replace('https://doi.org/', '') or None,
-                accession=info.get('Accession Number'), publication_type=info.get('Publication Type'),
+                accession=acc, pmid=pmid, publication_type=info.get('Publication Type'),
                 language=info.get('Language'), sourced_from=src.group(1).strip() if src else None,
-                abstract=ab, record_id=info.get('ID Number'))
+                abstract=ab, abstract_source='cochrane' if ab else None, record_id=info.get('ID Number'))
 
 
 if __name__ == '__main__':
@@ -62,10 +68,12 @@ if __name__ == '__main__':
     a = ap.parse_args()
     for p in a.pages:
         rid = os.path.basename(p).rsplit('.', 1)[0]
+        if not valid_id(rid):
+            print(f'AVISO: {os.path.basename(p)} ignorado (nome deve ser o ID Cochrane, ex.: CN-02761934.txt)'); continue
         r = parse(open(p).read())
         r.update(id=rid, url=record_url(rid), section='cochrane_review' if rid.upper().startswith('CD') else 'central_trial',
                  captured_at=now(), origin='pagina_cochrane', source_file=os.path.relpath(p, a.dir))
         if r.get('record_id') and r['record_id'] != rid:
             print(f'AVISO {rid}: página diz ID {r["record_id"]}')
         dump_json(r, os.path.join(a.dir, 'artigos', '_registros', rid + '.json'))
-        print(rid, '| abstract' if r['abstract'] else '| SEM ABSTRACT', '|', (r['title'] or '')[:70])
+        print(rid, '| abstract' if r['abstract'] else '| SEM ABSTRACT', '| PMID ' + (r['pmid'] or '-'), '|', (r['title'] or '')[:70])

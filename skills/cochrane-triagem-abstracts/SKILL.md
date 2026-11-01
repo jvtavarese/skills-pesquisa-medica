@@ -36,6 +36,7 @@ Peça só o que faltar. O mínimo é o **briefing do projeto**:
 | Filtro de anos | não (padrão: sem filtro) | "2021–2026" |
 | Strings de busca prontas | não (a skill propõe) | booleanas da Cochrane |
 | Exportações da Cochrane | não (só no modo manual) | arquivos `.txt`/`.ris` **com abstract** |
+| Fonte do abstract | não (padrão: `cochrane`) | `cochrane` ou `cochrane+pubmed` (ver 3.4) |
 
 O briefing pode chegar como texto colado, arquivo `.md`/`.docx`/`.pdf` ou link do Google Docs (leia com
 o conector do Drive, se houver). O modelo de briefing está em `assets/briefing_modelo.md` — ofereça-o
@@ -93,6 +94,20 @@ preprint + artigo): mantenha a versão em periódico e marque as outras como `ve
   (`https://www.cochranelibrary.com/central/doi/10.1002/central/<CN-ID>/full`), salve o texto da página em
   `artigos/_paginas/<ID>.txt` e rode `scripts/parse_record_page.py` para gerar o registro.
 - **Modo manual**: o abstract já veio na exportação.
+- **Complemento PubMed (opcional, só com `cochrane+pubmed`)**: quando o registro CENTRAL veio do PubMed,
+  a Cochrane informa o PMID. `scripts/fetch_pubmed.py --dir <dir>` busca na API do PubMed o abstract
+  **desse mesmo registro** para quem ficou sem abstract (página não abriu, navegador bloqueado,
+  exportação sem abstract). Ele só aceita o texto se o título do PubMed bater com o da Cochrane, e o
+  pacote informa a fonte ("Abstract integral (PubMed PMID …)"). A **descoberta e as contagens continuam
+  100% Cochrane**: o PubMed nunca adiciona artigos à lista. Use isso para reduzir dependência do
+  navegador, não para ampliar a busca. Com a fonte `cochrane` (padrão), não use este passo; registros
+  sem abstract continuam `sem_abstract`.
+  - Registros sem PMID na Cochrane (comuns quando vêm do CINAHL) podem ser tentados com
+    `--buscar-pmid-por-doi`: procura o PMID pelo DOI informado pela Cochrane, com a mesma checagem de
+    título.
+  - Depois de preencher, rode `prescreen.py` de novo antes do `build_packets.py`; senão os registros
+    recém-preenchidos continuam marcados `sem_abstract`.
+  - Rodar `parse_record_page.py` de novo sobrescreve o registro; rode `fetch_pubmed.py` em seguida.
 
 Então `scripts/build_packets.py` cria `artigos/ART-NNNN/pacote.md` + `metadados.json` (somente leitura,
 com hash). Registros CENTRAL são rotulados "artigo indexado no CENTRAL — não é revisão Cochrane".
@@ -115,7 +130,12 @@ Gere os prompts com `scripts/make_prompts.py` e rode-os conforme `references/amb
 Continue até atingir a meta ou esgotar os candidatos. Se a meta for "todos", leia todos.
 
 ### 3.7 Relatório
-Rode `scripts/build_report.py` no diretório de trabalho. Ele gera:
+Antes, rode `scripts/enrich_crossref.py --dir <dir>`: ele confere os metadados de cada artigo no
+Crossref (pelo DOI ou, sem DOI, por um casamento estrito de título e ano) e preenche só o que a
+Cochrane não trouxe (DOI, volume, número, páginas). Valores da Cochrane nunca são sobrescritos; as
+divergências vão para o relatório. Sem internet, pule este passo: o relatório funciona sem ele.
+
+Depois rode `scripts/build_report.py` no diretório de trabalho. Ele gera:
 - `resultados/triagem_abstracts.md` — tabela de decisões A/B/juiz com motivos;
 - `resultados/Levantamento_Cochrane.pdf` — título, objetivos, tabela "vieram / registros / lidos / usados",
   cada busca com sua string e referências numeradas (AMA, com DOI e link Cochrane), lista final sem

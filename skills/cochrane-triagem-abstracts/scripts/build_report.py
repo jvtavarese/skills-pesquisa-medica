@@ -3,13 +3,18 @@
 
 Lê: briefing.json, buscas/historico.jsonl, resultados/triagem_previa.csv, artigos/manifesto_pacotes.json,
     artigos/ART-*/{metadados.json, parecer_A.json, parecer_B.json, decisao_juiz.json, elegibilidade_coordenador.json}
+    e, se existir, artigos/ART-*/metadados_crossref.json (de enrich_crossref.py)
 Gera: resultados/triagem_abstracts.md, resultados/Levantamento_Cochrane.pdf, resultados/Levantamento_Cochrane.html
 
 Artigo válido = juiz decidiu `incluir` e não há elegibilidade_coordenador.json com eligible=false.
+
+Metadados das referências: a Cochrane vem primeiro. Do Crossref (só quando o registro é confiável) entram
+apenas campos vazios na Cochrane: doi, volume, issue, pages, year e autores (se a lista estiver vazia).
+Valor da Cochrane nunca é trocado; divergências vão para a seção "Divergências de metadados" do .md.
 Requer: reportlab (pip install reportlab).
 Exemplo:  build_report.py --dir levantamento-x
 """
-import argparse, csv, json, os, sys
+import argparse, csv, json, os, re, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from common import load_json
 
@@ -56,12 +61,47 @@ def counts(h):
     return total, reg, read, used
 
 
+CR_FILL = ('doi', 'volume', 'issue', 'pages', 'year')
+
+
+def crossref(art):
+    """metadados_crossref.json utilizável (casou e é o mesmo artigo) ou None."""
+    c = L(art, 'metadados_crossref.json')
+    if not c or not c.get('matched_by'):
+        return None
+    sim = c.get('title_similarity')
+    if c.get('confiavel') is False or (c.get('confiavel') is None and sim is not None and sim < 0.8):
+        return None
+    return c
+
+
+def conflicting(c):
+    """Divergência em ano/volume/DOI indica edição ou publicação diferente: não completar nada."""
+    return any(d.get('field') in ('year', 'volume', 'doi') for d in c.get('discrepancies') or [])
+
+
+def meta(art):
+    """Metadados da Cochrane completados (só campos vazios) pelo Crossref. Não altera os arquivos."""
+    m = dict(L(art, 'metadados.json'))
+    c = crossref(art)
+    m['_crossref'] = bool(c)
+    if c and not conflicting(c):
+        for f in CR_FILL:
+            if m.get(f) in (None, '', []) and c.get(f) not in (None, '', []):
+                m[f] = c[f]
+                if f == 'issue':  # Crossref às vezes usa "suppl_1"
+                    m[f] = re.sub(r'(?i)^suppl(?:ement)?[_ .]*(\w+)$', r'Suppl \1', str(c[f]))
+        if not [x for x in m.get('authors') or [] if x] and c.get('authors'):
+            m['authors'] = c['authors']
+    return m
+
+
 def esc(s):
     return (s or '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;').replace('\u2010', '-').replace('\u2011', '-')
 
 
 def ref(art, link_tag='link'):
-    m = L(art, 'metadados.json')
+    m = meta(art)
     au = [x for x in m.get('authors', []) if x]
     aus = ', '.join(au[:6]) + (', et al' if len(au) > 6 else '')
     title = (m.get('title') or '').rstrip('.')
@@ -79,12 +119,13 @@ def ref(art, link_tag='link'):
 
 
 def note(art, link_tag='link'):
-    m, jz = L(art, 'metadados.json'), L(art, 'decisao_juiz.json')
+    m, jz = meta(art), L(art, 'decisao_juiz.json')
     ax = ', '.join(AX.get(x, x) for x in jz.get('axes_supported', []))
     close = 'link' if link_tag == 'link' else 'a'
     return (f"Contribuição: {jz['relevance_class']}{f' ({esc(ax)})' if ax else ''} · objetivos "
             f"{', '.join(jz.get('objective_mapping') or []) or '-'} · confiança {jz['confidence']} · Cochrane "
-            f"{m['record_id']} (<{link_tag} href='{m['cochrane_url']}'>abrir registro</{close}>)")
+            f"{m['record_id']} (<{link_tag} href='{m['cochrane_url']}'>abrir registro</{close}>)"
+            + (' · metadados conferidos no Crossref' if m['_crossref'] else ''))
 
 
 final_order = sorted(valid, key=lambda x: (ORDER.get(L(x, 'decisao_juiz.json')['relevance_class'], 9),
@@ -112,6 +153,20 @@ for art in arts:
     md.append(f"| {art} | {(m['title'] or '')[:80].replace('|', '/')} | {cell(pa)} | {cell(pb)} | {cell(jz)} | "
               f"{jz['relevance_class'] if jz else '—'} | {jz['confidence'] if jz else '—'} | "
               f"{(ov or {}).get('status', '—')} | {(jz or {}).get('reason', '')[:300].replace('|', '/').replace(chr(10), ' ')} |")
+md_cell = lambda v: str(v if v not in (None, '') else '—').replace('|', '/').replace('\n', ' ')
+div = []
+for art in arts:
+    c = L(art, 'metadados_crossref.json')
+    if not c or not c.get('matched_by'):
+        continue
+    usado = 'sim' if crossref(art) else 'não (registro do Crossref não parece o mesmo artigo)'
+    for d in c.get('discrepancies') or []:
+        div.append(f"| {art} | {d.get('field')} | {md_cell(d.get('cochrane'))} | {md_cell(d.get('crossref'))} | {usado} |")
+if div:
+    md += ['', '## Divergências de metadados (Cochrane × Crossref)', '',
+           'O relatório mantém sempre o valor da Cochrane; o Crossref só completa campos vazios. '
+           'Confira manualmente as linhas abaixo antes de citar.', '',
+           '| Artigo | Campo | Cochrane | Crossref | Crossref usado para completar? |', '|---|---|---|---|---|'] + div
 open(os.path.join(R, 'triagem_abstracts.md'), 'w').write('\n'.join(md) + '\n')
 
 # ------------------------------------------------------------------ PDF

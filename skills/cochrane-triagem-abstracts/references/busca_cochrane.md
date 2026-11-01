@@ -33,6 +33,24 @@
             "meta": "BMC nephrology, 2024, 25(1), 350 | added to CENTRAL: ...", "src": "PubMed", "section": "central_trial"}]}
 ```
 
+## APIs: o que podem e o que não podem
+A Cochrane Library não tem API pública de busca. O conteúdo é hospedado pela Wiley, e o acesso
+programático depende de licença.
+- **CENTRAL não é replicável por API.** PubMed e Europe PMC não reproduzem a busca nem as contagens do
+  CENTRAL. Por isso a descoberta é sempre feita na própria Cochrane (navegador ou exportação manual).
+- **PubMed (E-utilities)** serve para buscar o abstract de um registro CENTRAL que já tem PMID
+  (`fetch_pubmed.py`, opcional, rotulado no pacote). Variáveis opcionais: `NCBI_API_KEY`
+  (até 10 req/s) e `NCBI_EMAIL`. Atenção: o PMID guardado pela Cochrane pode estar desatualizado
+  (artigo republicado com outro PMID); o script registra `nao_encontrado_no_pubmed` e não inventa.
+- Se der erro de certificado SSL (comum no Python do python.org no macOS), rode
+  "Install Certificates.command" da pasta do Python ou `pip install certifi`. Os scripts nunca
+  desligam a verificação.
+- **Crossref** serve para conferir e completar referências pelo DOI (`enrich_crossref.py`).
+  Variável opcional: `CROSSREF_MAILTO`.
+- **Revisões Cochrane via PubMed** (`"Cochrane Database Syst Rev"[Journal]`) e **Europe PMC** podem
+  ser buscas auxiliares, mas precisam ser registradas e mostradas separadas das buscas da Cochrane,
+  sem somar às contagens.
+
 ## Modo manual (sem navegador)
 Peça à pessoa, para cada string:
 1. Colar a string em https://www.cochranelibrary.com/advanced-search e clicar **Run search**.

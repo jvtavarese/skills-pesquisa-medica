@@ -5,12 +5,16 @@ Cada pacote: pacote.md (metadados + abstract integral exibido) e metadados.json,
 com sha256 em artigos/manifesto_pacotes.json. IDs ART já atribuídos são preservados entre execuções;
 pacotes existentes nunca são reescritos.
 
+O título da seção do abstract diz a fonte: "## Abstract integral exibido na Cochrane" ou, se o abstract
+veio de fetch_pubmed.py, "## Abstract integral (PubMed PMID <n> — mesmo registro indexado no CENTRAL <ID>)".
+metadados.json traz abstract_source ("cochrane" | "pubmed" | null) e pmid.
+
 Requer artigos/_registros/<ID>.json (de parse_record_page.py ou parse_export.py).
 Exemplo:  build_packets.py --dir levantamento-x
 """
 import argparse, csv, os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from common import dump_json, load_json, sha256
+from common import dump_json, load_json, sha256, valid_id
 
 ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 ap.add_argument('--dir', required=True)
@@ -25,7 +29,11 @@ missing, created = [], 0
 for r in rows:
     if r['disposition'] != 'candidato' or r['id'] in by_rec:
         continue
+    if not valid_id(r['id']):
+        print('AVISO: ID inválido no CSV, ignorado:', repr(r['id'])[:40]); continue
     reg = load_json(os.path.join(A, '_registros', r['id'] + '.json'))
+    if reg and reg.get('origin') == 'item_busca_cochrane' and reg.get('abstract_source') != 'pubmed':
+        reg = None  # registro mínimo sem confirmação do PubMed: tratar como ausente
     if not reg:
         missing.append(r['id']); continue
     n += 1; aid = f'ART-{n:04d}'; d = os.path.join(A, aid)
@@ -39,11 +47,28 @@ for r in rows:
                 sourced_from=reg.get('sourced_from'), cochrane_url=reg.get('url'), cochrane_section=reg.get('section'),
                 item_label=label, search_ids=r['searches'].split(';'), retrieved_at=reg.get('captured_at'),
                 capture_origin=reg.get('origin'), access_level='resumo' if reg.get('abstract') else 'registro',
-                abstract_available=bool(reg.get('abstract')))
+                abstract_available=bool(reg.get('abstract')),
+                abstract_source=(reg.get('abstract_source') or 'cochrane') if reg.get('abstract') else None,
+                pmid=reg.get('pmid') or reg.get('abstract_pmid'))
     ab = reg.get('abstract') or 'ESTE REGISTRO NÃO EXIBE ABSTRACT NA COCHRANE ("This CENTRAL record does not have an abstract.")'
+    if meta['abstract_source'] == 'pubmed':
+        meta['abstract_pmid'] = reg.get('abstract_pmid') or meta['pmid']
+        meta['abstract_fetched_at'] = reg.get('abstract_fetched_at')
+        ab_head = f"## Abstract integral (PubMed PMID {meta['abstract_pmid']} — mesmo registro indexado no CENTRAL {r['id']})"
+        meta['pmid_via'] = reg.get('pmid_via') or 'cochrane'
+        via = ('PMID localizado pelo DOI informado pela Cochrane' if meta['pmid_via'] == 'doi'
+               else 'PMID informado pela Cochrane (Accession Number)')
+        fonte = (f"PubMed (PMID {meta['abstract_pmid']}), mesmo registro do CENTRAL; {via}; a Cochrane não exibiu "
+                 f"o abstract nesta captura. Título conferido com o da Cochrane.")
+        aviso = ('> Pacote imutável. Registro e buscas: Cochrane Library. Abstract: PubMed, mesmo registro (ver abaixo). '
+                 'Avaliação somente pelo abstract abaixo.')
+    else:
+        ab_head = '## Abstract integral exibido na Cochrane'
+        fonte = 'Cochrane Library' if reg.get('abstract') else 'nenhuma (registro sem abstract)'
+        aviso = '> Pacote imutável. Fonte única: Cochrane Library. Avaliação somente pelo abstract abaixo.'
     md = f"""# Pacote de leitura {aid}
 
-> Pacote imutável. Fonte única: Cochrane Library. Avaliação somente pelo abstract abaixo.
+{aviso}
 
 | Campo | Valor |
 |---|---|
@@ -55,13 +80,15 @@ for r in rows:
 | Autores | {', '.join(meta['authors'])} |
 | Referência | {meta['citation']} |
 | DOI (informado pela Cochrane) | {meta['doi']} |
+| PMID | {meta['pmid'] or '—'} |
 | Idioma | {meta['language']} |
 | Origem do registro | {meta['sourced_from']} |
 | URL Cochrane | {meta['cochrane_url']} |
 | Buscas de origem | {', '.join(meta['search_ids'])} |
 | Capturado em | {meta['retrieved_at']} |
+| Fonte do abstract | {fonte} |
 
-## Abstract integral exibido na Cochrane
+{ab_head}
 
 {ab}
 """
